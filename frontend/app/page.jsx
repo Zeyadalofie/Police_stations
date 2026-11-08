@@ -11,9 +11,9 @@ const roleNames = {
 }
 const roleDescriptions = {
   data_analyst: 'إدارة البيانات والحسابات وصلاحيات الفريق',
-  police_commander: 'متابعة العمليات ومؤشرات أداء الفرق',
-  officer: 'تسجيل العمليات ومتابعة مهامك',
-  mayor: 'عرض مؤشرات وملخصات العمليات',
+  police_commander: 'متابعة العمليات والتحقق منها وكتابة استعلامات قراءة',
+  officer: 'تسجيل العمليات ومتابعة مهامك وكتابة استعلامات ضمن نطاقك',
+  mayor: 'عرض البيانات المعتمدة وكتابة استعلامات عليها فقط',
 }
 const statusNames = { pending: 'قيد المتابعة', in_progress: 'جارٍ التنفيذ', completed: 'مكتملة' }
 const numberFormat = new Intl.NumberFormat('ar-SA')
@@ -45,7 +45,7 @@ function Icon({ name }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>
 }
 
-function Auth({ onLogin }) {
+function Auth({ onLogin, canRegister }) {
   const [mode, setMode] = useState('login')
   const [form, setForm] = useState({ name: '', email: '', password: '' })
   const [error, setError] = useState('')
@@ -73,38 +73,54 @@ function Auth({ onLogin }) {
         <div className="auth-mini-stats"><div><b>٤</b><span>أدوار متخصصة</span></div><div><b>١</b><span>مصدر موحد للبيانات</span></div></div>
       </div><div className="auth-foot"><span>منصة تحليل العمليات</span><span>نسخة تجريبية</span></div>
     </section>
-    <section className="auth-form-panel"><div className="auth-card"><span className="eyebrow">مرحبًا بك</span><h2>{register ? 'أنشئ حسابك' : 'تسجيل الدخول'}</h2><p className="muted">{register ? 'ستبدأ بحساب ضابط، ويحدد المسؤول صلاحيتك.' : 'سجّل الدخول للوصول إلى مساحة العمل الخاصة بك.'}</p>
+    <section className="auth-form-panel"><div className="auth-card"><span className="eyebrow">مرحبًا بك</span><h2>{register ? 'أنشئ حساب مسؤول النظام' : 'تسجيل الدخول'}</h2><p className="muted">{register ? 'أنشئ حساب مسؤول قواعد البيانات الأول، ثم أنشئ حسابات الموظفين من صفحة الصلاحيات.' : 'سجّل الدخول للوصول إلى مساحة العمل الخاصة بك.'}</p>
       <form onSubmit={submit} className="auth-form">
         {register && <label>الاسم الكامل<input required minLength="2" autoComplete="name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="اكتب اسمك"/></label>}
         <label>البريد الإلكتروني<input required type="email" autoComplete="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder="name@example.com" dir="ltr"/></label>
         <label>كلمة المرور<input required minLength="8" type="password" autoComplete={register?'new-password':'current-password'} value={form.password} onChange={e=>setForm({...form,password:e.target.value})} placeholder="٨ أحرف على الأقل" dir="ltr"/></label>
         {error && <div className="inline-error" role="alert">{error}</div>}
-        <button className="button button-primary button-wide" disabled={busy}>{busy?'جارٍ الدخول…':register?'إنشاء الحساب':'دخول إلى مساحة العمل'}<Icon name="arrow"/></button>
+        <button className="button button-primary button-wide" disabled={busy}>{busy?'جارٍ الدخول…':register?'إنشاء حساب المسؤول':'دخول إلى مساحة العمل'}<Icon name="arrow"/></button>
       </form>
-      <div className="auth-toggle">{register?'لديك حساب بالفعل؟':'ليس لديك حساب؟'} <button onClick={()=>{setError('');setMode(register?'login':'register')}}>{register?'سجّل الدخول':'أنشئ حسابًا'}</button></div>
+      {canRegister&&<div className="auth-toggle">{register?'لديك حساب بالفعل؟':'إعداد أول مرة؟'} <button onClick={()=>{setError('');setMode(register?'login':'register')}}>{register?'سجّل الدخول':'إنشاء حساب المسؤول'}</button></div>}{!canRegister&&<div className="auth-toggle">حسابات الموظفين ينشئها مسؤول قواعد البيانات من صفحة الصلاحيات.</div>}
       <div className="auth-privacy"><Icon name="lock"/><span>تُحمى الجلسات وتُطبّق صلاحيات الحساب من الخادم.</span></div>
     </div></section>
   </main>
+}
+
+function ChangePassword({ user, onChanged }) {
+  const [form, setForm] = useState({current_password:'',new_password:'',confirm_password:''})
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  async function submit(event) {
+    event.preventDefault(); setError('')
+    if (form.new_password !== form.confirm_password) { setError('كلمتا المرور الجديدتان غير متطابقتين'); return }
+    setBusy(true)
+    try { await api('/api/account/change-password',{method:'POST',body:JSON.stringify({current_password:form.current_password,new_password:form.new_password})}); onChanged({...user,must_change_password:false}) }
+    catch(exception) { setError(exception.message) }
+    finally { setBusy(false) }
+  }
+  return <main className="auth-page"><section className="auth-brand-panel"><div className="brand-lockup"><div className="brand-mark"><Icon name="shield"/></div><div><b>مِرْصاد</b><span>مركز العمليات والتحليل</span></div></div><div className="auth-story"><span className="kicker"><i/> خطوة أمان أولى</span><h1>غيّر كلمة<br/>المرور المؤقتة.</h1><p>اختر كلمة مرور خاصة بك قبل الدخول إلى مساحة عملك.</p></div></section><section className="auth-form-panel"><div className="auth-card"><span className="eyebrow">مرحبًا {user.name}</span><h2>تحديث كلمة المرور</h2><p className="muted">استخدم كلمة مرور جديدة لا تقل عن ١٢ حرفًا.</p><form className="auth-form" onSubmit={submit}><label>كلمة المرور الأولية<input required minLength="8" type="password" autoComplete="current-password" value={form.current_password} onChange={e=>setForm({...form,current_password:e.target.value})}/></label><label>كلمة المرور الجديدة<input required minLength="12" type="password" autoComplete="new-password" value={form.new_password} onChange={e=>setForm({...form,new_password:e.target.value})}/></label><label>تأكيد كلمة المرور الجديدة<input required minLength="12" type="password" autoComplete="new-password" value={form.confirm_password} onChange={e=>setForm({...form,confirm_password:e.target.value})}/></label>{error&&<div className="inline-error" role="alert">{error}</div>}<button className="button button-primary button-wide" disabled={busy}>{busy?'جارٍ الحفظ…':'حفظ كلمة المرور'}<Icon name="arrow"/></button></form></div></section></main>
 }
 
 function StatCard({ label, value, note, tone }) {
   return <article className={`stat-card ${tone || ''}`}><div className="stat-label">{label}<span className="stat-dot"/></div><strong>{value ?? '—'}</strong><small>{note}</small></article>
 }
 
-function RecordsTable({ records, user, onStatus }) {
+function RecordsTable({ records, user, onStatus, onValidate }) {
   const canManage = ['police_commander', 'data_analyst'].includes(user.role)
   if (!records.length) return <div className="empty-state"><div className="empty-mark"><Icon name="file"/></div><b>لا توجد عمليات مسجلة بعد</b><p>ستظهر السجلات هنا بعد إضافتها إلى النظام.</p></div>
-  return <div className="table-scroll"><table><thead><tr><th>العملية</th><th>المنطقة</th><th>الأولوية</th><th>الحالة</th><th>زمن الاستجابة</th><th>وقت التسجيل</th></tr></thead><tbody>{records.map(row=><tr key={row.id}>
+  return <div className="table-scroll"><table><thead><tr><th>العملية</th><th>المنطقة</th><th>الأولوية</th><th>الحالة</th>{user.role==='police_commander'&&<th>التحقق</th>}<th>زمن الاستجابة</th><th>وقت التسجيل</th></tr></thead><tbody>{records.map(row=><tr key={row.id}>
     <td><b>{row.title}</b><small>{row.category} · #{row.id}</small></td><td>{row.region}</td><td><span className={`priority priority-${row.priority==='عاجل'?'urgent':row.priority==='مرتفع'?'high':'normal'}`}>{row.priority}</span></td>
-    <td>{canManage?<select className="status-select" value={row.status} onChange={e=>onStatus(row.id,e.target.value)}><option>قيد المتابعة</option><option>جارٍ التنفيذ</option><option>مكتملة</option></select>:<span className={`status-pill ${row.status==='مكتملة'?'done':''}`}>{row.status}</span>}</td>
+    <td>{canManage?<select className="status-select" value={row.status} onChange={e=>onStatus(row.id,e.target.value)}><option>قيد المتابعة</option><option>جارٍ التنفيذ</option><option>مكتملة</option></select>:<span className={`status-pill ${row.status==='مكتملة'?'done':''}`}>{row.status}</span>}</td>{user.role==='police_commander'&&<td><div className="inline-actions"><button className="text-action" onClick={()=>onValidate(row.id,true)}>اعتماد</button><button className="text-action text-danger" onClick={()=>onValidate(row.id,false)}>إرجاع</button></div><small>{row.validation_state==='approved'?'معتمدة':row.validation_state==='needs_correction'?'تحتاج تصحيح':'بانتظار التحقق'}</small></td>}
     <td>{row.response_minutes == null ? '—' : `${numberFormat.format(row.response_minutes)} د`}</td><td>{new Date(row.occurred_at).toLocaleDateString('ar-SA')}</td>
   </tr>)}</tbody></table></div>
 }
 
 function SQLResults({ result }) {
   if (!result) return null
+  if (result.queued) return <div className="query-result"><div className="result-top"><div><b>حُفظ الأمر في سجل الانتظار</b><span>سيعاد التحقق من صلاحية الحساب وتنفيذ الأمر عند عودة الاتصال.</span></div><span className="sql-badge">بانتظار الاتصال</span></div></div>
   return <div className="query-result">
-    <div className="result-top"><div><b>{result.columns.length?'نتيجة الاستعلام':'اكتمل تنفيذ الأمر'}</b><span>{result.columns.length?`${numberFormat.format(result.affected_rows)} صف`:`${numberFormat.format(result.affected_rows)} صف متأثر`}{result.truncated?' · عُرض أول ٥٠٠ صف':''}</span></div><span className="result-check"><Icon name="check"/> مكتمل</span></div>
+    <div className="result-top"><div><b>{result.columns.length?'نتيجة الاستعلام':'اكتمل تنفيذ الأمر'}</b><span>{result.columns.length?`${numberFormat.format(result.affected_rows)} صف`:`${numberFormat.format(result.affected_rows)} صف متأثر`}{result.truncated?' · عُرض أول ٥٠٠ صف':''}</span></div><span className="result-check"><Icon name="check"/> وصل إلى {result.database||'قاعدة البيانات'}</span></div>
     {result.columns.length ? <div className="table-scroll"><table className="sql-table" dir="ltr"><thead><tr>{result.columns.map(c=><th key={c}>{c}</th>)}</tr></thead><tbody>{result.rows.map((row,i)=><tr key={i}>{row.map((v,j)=><td key={j}>{v===null?<i>NULL</i>:String(v)}</td>)}</tr>)}</tbody></table>{!result.rows.length&&<div className="no-rows">الاستعلام لم يُرجع صفوفًا.</div>}</div>:<div className="command-complete">تم تنفيذ الأمر بنجاح.</div>}
   </div>
 }
@@ -115,6 +131,17 @@ function AppShell({ user, onLogout }) {
   const [records, setRecords] = useState([])
   const [users, setUsers] = useState([])
   const [roleHistory, setRoleHistory] = useState([])
+  const [accountHistory, setAccountHistory] = useState([])
+  const [roleCatalog, setRoleCatalog] = useState([])
+  const [commandHistory, setCommandHistory] = useState([])
+  const [spatialLabs, setSpatialLabs] = useState([])
+  const [sqlConnection, setSqlConnection] = useState(null)
+  const [changeRequests, setChangeRequests] = useState([])
+  const [dataRequests, setDataRequests] = useState([])
+  const [reports, setReports] = useState([])
+  const [draftResults, setDraftResults] = useState({})
+  const [requestForm, setRequestForm] = useState({title:'',question:'',complexity:'standard'})
+  const [reportForm, setReportForm] = useState({title:'توزيع العمليات حسب المنطقة',statement:'SELECT region, COUNT(*) AS total FROM operation_records GROUP BY region ORDER BY total DESC LIMIT 20',label_column:'region',value_column:'total',chart_type:'bar'})
   const [loading, setLoading] = useState(true)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
@@ -124,14 +151,20 @@ function AppShell({ user, onLogout }) {
   const [createOpen, setCreateOpen] = useState(false)
   const [createForm, setCreateForm] = useState({ title: '', category: '', region: '', priority: 'عادي' })
   const [roleBusy, setRoleBusy] = useState(null)
-  const canSql = user.role !== 'mayor'
+  const [employeeForm, setEmployeeForm] = useState({name:'',email:'',role:'officer',temporary_password:''})
+  const [employeeBusy, setEmployeeBusy] = useState(false)
+  const canSql = true
   const canManageUsers = user.role === 'data_analyst'
-  const canCreate = ['officer', 'police_commander', 'data_analyst'].includes(user.role)
+  const canCreate = ['officer', 'data_analyst'].includes(user.role)
   const nav = useMemo(() => [
     { id: 'overview', label: 'نظرة عامة', icon: 'home' },
-    { id: 'operations', label: user.role === 'mayor' ? 'سجل العمليات' : 'العمليات', icon: 'file' },
+    { id: 'operations', label: user.role === 'mayor' ? 'البيانات المعتمدة' : user.role === 'police_commander' ? 'التحقق من البيانات' : 'العمليات', icon: 'file' },
+    ...(user.role==='mayor' ? [{id:'data-requests',label:'طلب بيانات',icon:'plus'}] : []),
+    ...(user.role==='police_commander' ? [{id:'data-requests',label:'طلبات البيانات',icon:'file'},{id:'reports',label:'مراجعة الرسوم',icon:'shield'}] : []),
+    ...(user.role==='officer' ? [{id:'data-requests',label:'الطلبات المسندة',icon:'file'},{id:'reports',label:'رسومي البيانية',icon:'shield'}] : []),
+    {id:'lab-tasks',label:'مهام التحليل المكاني',icon:'file'},
     ...(canSql ? [{ id: 'sql', label: 'استعلامات SQL', icon: 'sql' }] : []),
-    ...(canManageUsers ? [{ id: 'users', label: 'الحسابات والصلاحيات', icon: 'users' }] : []),
+    ...(canManageUsers ? [{ id: 'users', label: 'الصلاحيات', icon: 'users' }, {id:'change-requests',label:'طلبات التعديل',icon:'file'}, {id:'data-requests',label:'طلبات البيانات',icon:'file'}, {id:'reports',label:'الرسوم والتقارير',icon:'shield'}, { id: 'command-log', label: 'سجل أوامر SQL', icon: 'sql' }] : []),
   ], [canManageUsers, canSql, user.role])
 
   const loadData = useCallback(async () => {
@@ -147,8 +180,17 @@ function AppShell({ user, onLogout }) {
 
   useEffect(() => { loadData() }, [loadData])
   useEffect(() => {
+    if (page === 'command-log' && canManageUsers) api('/api/sql-console/commands').then(setCommandHistory).catch(exception=>setError(exception.message))
+    if (page === 'change-requests' && canManageUsers) api('/api/admin/change-requests').then(setChangeRequests).catch(exception=>setError(exception.message))
+    if (page === 'data-requests' && user.role!=='mayor') api('/api/data-requests').then(setDataRequests).catch(exception=>setError(exception.message))
+    if (page === 'data-requests' && user.role==='mayor') api('/api/data-requests').then(setDataRequests).catch(exception=>setError(exception.message))
+    if (page === 'reports') api('/api/reports').then(setReports).catch(exception=>setError(exception.message))
+    if (page === 'lab-tasks') api('/api/labs/tasks').then(setSpatialLabs).catch(exception=>setError(exception.message))
+    if (page === 'sql') api('/api/sql-console/status').then(setSqlConnection).catch(exception=>setSqlConnection({connected:false}))
+  }, [page, canManageUsers, user.role])
+  useEffect(() => {
     if (page !== 'users' || !canManageUsers) return
-    Promise.all([api('/api/admin/users'),api('/api/admin/role-history')]).then(([accounts,history])=>{setUsers(accounts);setRoleHistory(history)}).catch(exception=>setError(exception.message))
+    Promise.all([api('/api/admin/users'),api('/api/admin/role-history'),api('/api/admin/access-model'),api('/api/admin/account-history')]).then(([accounts,history,model,created])=>{setUsers(accounts);setRoleHistory(history);setRoleCatalog(model);setAccountHistory(created)}).catch(exception=>setError(exception.message))
   }, [page, canManageUsers])
 
   async function createOperation(event) {
@@ -168,18 +210,72 @@ function AppShell({ user, onLogout }) {
     } catch (exception) { setError(exception.message); await loadData() }
   }
 
+  async function createEmployee(event) {
+    event.preventDefault(); setEmployeeBusy(true); setError(''); setNotice('')
+    try {
+      await api('/api/admin/users',{method:'POST',body:JSON.stringify(employeeForm)})
+      setUsers(await api('/api/admin/users'))
+      setEmployeeForm({name:'',email:'',role:'officer',temporary_password:''})
+      setNotice('تم إنشاء الحساب. أعط الموظف كلمة المرور الأولية ليغيّرها عند أول دخول.')
+    } catch(exception) { setError(exception.message) }
+    finally { setEmployeeBusy(false) }
+  }
+
   async function changeRole(id, role) {
     setRoleBusy(id); setError(''); setNotice('')
     try {
       await api(`/api/admin/users/${id}/role`, { method: 'PUT', body: JSON.stringify({ role }) })
-      setUsers(current=>current.map(row=>row.id===id?{...row,role,role_label:roleNames[role]}:row)); setRoleHistory(await api('/api/admin/role-history')); setNotice('تم تحديث صلاحية الحساب')
+      setUsers(current=>current.map(row=>row.id===id?{...row,role,role_label:roleNames[role],permissions:roleCatalog.find(item=>item.role===role)?.capabilities||[]}:row)); setRoleHistory(await api('/api/admin/role-history')); setNotice('تم تحديث صلاحية الحساب')
     } catch (exception) { setError(exception.message); await api('/api/admin/users').then(setUsers).catch(()=>{}) }
     finally { setRoleBusy(null) }
   }
 
+  async function validateRecord(id, approved) {
+    const note = window.prompt(approved ? 'ملاحظة الاعتماد (اختياري)' : 'سبب الإرجاع للتصحيح') || ''
+    try { await api(`/api/operations/${id}/validation`, {method:'POST',body:JSON.stringify({approved,note})}); setNotice(approved?'تم اعتماد السجل':'أُعيد السجل للتصحيح'); await loadData() } catch(exception) { setError(exception.message) }
+  }
+
+  async function reviewChange(id, approved) {
+    const note = window.prompt(approved?'ملاحظة الاعتماد (اختياري)':'سبب رفض التعديل') || ''
+    try { await api(`/api/admin/change-requests/${id}`,{method:'PUT',body:JSON.stringify({approved,note})}); setChangeRequests(rows=>rows.filter(row=>row.id!==id)); setNotice(approved?'تم اعتماد التعديل':'تم رفض التعديل') } catch(exception) { setError(exception.message) }
+  }
+
+  async function submitRequestResult(event, id) {
+    event.preventDefault(); const result_text=draftResults[id]||''
+    try { await api(`/api/data-requests/${id}/submit`,{method:'POST',body:JSON.stringify({result_text})}); setDataRequests(rows=>rows.filter(row=>row.id!==id)); setNotice('أُرسل الرد إلى قائد الشرطة للمراجعة') } catch(exception) { setError(exception.message) }
+  }
+
+  async function routeRequest(id, target_role) {
+    try { await api(`/api/data-requests/${id}/route`,{method:'PUT',body:JSON.stringify({target_role,note:''})}); setDataRequests(await api('/api/data-requests')); setNotice(target_role==='officer'?'أُسند الطلب إلى الضابط':'أُرسل الطلب إلى مسؤول قواعد البيانات') } catch(exception) { setError(exception.message) }
+  }
+
+  async function escalateRequest(id) {
+    try { await api(`/api/data-requests/${id}/escalate`,{method:'POST',body:JSON.stringify({target_role:'data_analyst',note:'يتطلب صلاحية أوسع'})}); setDataRequests(rows=>rows.filter(row=>row.id!==id)); setNotice('تم تصعيد الطلب إلى مسؤول قواعد البيانات') } catch(exception) { setError(exception.message) }
+  }
+
+  async function reviewRequest(id, approved) {
+    const note=window.prompt(approved?'ملاحظة الاعتماد (اختياري)':'سبب رفض الطلب')||''
+    try { await api(`/api/data-requests/${id}/review`,{method:'PUT',body:JSON.stringify({approved,note})}); setDataRequests(rows=>rows.filter(row=>row.id!==id)); setNotice(approved?'اعتمد القائد النتيجة وأصبحت متاحة للعمدة':'تم رفض النتيجة') } catch(exception) { setError(exception.message) }
+  }
+
+  async function createMayorRequest(event) {
+    event.preventDefault()
+    try { await api('/api/data-requests',{method:'POST',body:JSON.stringify(requestForm)}); setRequestForm({title:'',question:'',complexity:'standard'}); setNotice('تم إرسال الطلب إلى قائد الشرطة'); setDataRequests(await api('/api/data-requests')) } catch(exception) { setError(exception.message) }
+  }
+
+  async function reviewReport(id, approved) {
+    const note=window.prompt(approved?'ملاحظة الاعتماد (اختياري)':'سبب رفض الرسم')||''
+    try { await api(`/api/reports/${id}/review`,{method:'PUT',body:JSON.stringify({approved,note})}); setReports(rows=>rows.filter(row=>row.id!==id)); setNotice(approved?'تم اعتماد الرسم':'تم رفض الرسم') } catch(exception) { setError(exception.message) }
+  }
+
+  async function createReport(event) {
+    event.preventDefault()
+    try { const report=await api('/api/reports',{method:'POST',body:JSON.stringify(reportForm)}); setReports(rows=>[report,...rows]); setNotice('أُرسل الرسم إلى قائد الشرطة للمراجعة') } catch(exception) { setError(exception.message) }
+  }
+
   async function runSQL(event) {
     event.preventDefault(); setSqlBusy(true); setSqlResult(null); setError(''); setNotice('')
-    try { setSqlResult(await api('/api/sql-console/execute', { method: 'POST', body: JSON.stringify({ statement: sql }) })) }
+    try { const result = await api('/api/sql-console/execute', { method: 'POST', body: JSON.stringify({ command_id: crypto.randomUUID(), statement: sql }) }); setSqlResult(result); if (result.queued) { setNotice(result.message); api('/api/sql-console/commands').then(setCommandHistory).catch(()=>{}) } }
     catch (exception) { setError(exception.message) }
     finally { setSqlBusy(false) }
   }
@@ -200,7 +296,7 @@ function AppShell({ user, onLogout }) {
       <header className="topbar"><div className="breadcrumbs"><span>مرصاد</span><b>/</b><strong>{pageTitle}</strong></div><div className="topbar-right"><span className="online-mark"><i/> مساحة آمنة</span><span className="top-date">{new Date().toLocaleDateString('ar-SA',{weekday:'long',day:'numeric',month:'long'})}</span></div></header>
       <div className="page-content">
         {(error||notice)&&<div className={`toast ${error?'toast-error':'toast-success'}`} role="status"><span>{error||notice}</span><button onClick={()=>{setError('');setNotice('')}}>×</button></div>}
-        <div className="page-heading"><div><span className="eyebrow">{roleNames[user.role]}</span><h1>{page==='overview'?`أهلًا، ${name}`:pageTitle}</h1><p>{page==='overview'?roleDescriptions[user.role]:page==='sql'?'اكتب استعلامك، وستُطبق قاعدة البيانات حدود صلاحيتك.':page==='users'?'عيّن دور كل حساب وراجع سجل تغييرات الصلاحيات.':'تابع السجلات وفق صلاحية حسابك.'}</p></div>
+        <div className="page-heading"><div><span className="eyebrow">{roleNames[user.role]}</span><h1>{page==='overview'?`أهلًا، ${name}`:pageTitle}</h1><p>{page==='overview'?roleDescriptions[user.role]:page==='sql'?'اكتب استعلامك، وستُطبق قاعدة البيانات حدود صلاحيتك.':page==='users'?'راجع كل حساب وما يقدر عليه وغيّر دوره من صفحة الصلاحيات.':page==='command-log'?'تابع الأوامر التي نُفذت أو تنتظر عودة اتصال Neon.':'تابع السجلات وفق صلاحية حسابك.'}</p></div>
           {page==='operations'&&canCreate&&<button className="button button-primary" onClick={()=>setCreateOpen(value=>!value)}><Icon name="plus"/>{createOpen?'إغلاق النموذج':'تسجيل عملية'}</button>}
         </div>
         {page==='overview'&&<>
@@ -212,15 +308,20 @@ function AppShell({ user, onLogout }) {
             <StatCard label="مكتملة" value={numberFormat.format(dashboard?.completed||0)} note="تم إغلاقها" tone="stat-green"/>
           </section>
           <div className="dashboard-grid"><section className="panel response-panel"><div className="panel-heading"><div><span className="eyebrow">مؤشرات التشغيل</span><h2>حالة العمليات</h2></div><span className="unit-badge">مؤشر مباشر</span></div><div className="response-number">{dashboard?.avg_response_minutes==null?'—':numberFormat.format(dashboard.avg_response_minutes)}<small>متوسط زمن الاستجابة</small></div><div className="distribution-list">{[['قيد المتابعة',dashboard?.pending||0,'#d5a35d'],['جارٍ التنفيذ',dashboard?.in_progress||0,'#8f82b8'],['مكتملة',dashboard?.completed||0,'#52a184']].map(([label,value,color])=><div className="distribution-item" key={label}><div><span>{label}</span><b>{numberFormat.format(value)}</b></div><div className="distribution-track"><i style={{width:`${dashboard?.total?Math.min(100,value/dashboard.total*100):0}%`,background:color}}/></div></div>)}</div></section>
-            <section className="panel recent-panel"><div className="panel-heading"><div><span className="eyebrow">آخر التحديثات</span><h2>عمليات حديثة</h2></div><button className="subtle-link" onClick={()=>setPage('operations')}>عرض السجل <Icon name="arrow"/></button></div><RecordsTable records={records.slice(0,5)} user={user} onStatus={changeStatus}/></section></div>
+            <section className="panel recent-panel"><div className="panel-heading"><div><span className="eyebrow">آخر التحديثات</span><h2>عمليات حديثة</h2></div><button className="subtle-link" onClick={()=>setPage('operations')}>عرض السجل <Icon name="arrow"/></button></div><RecordsTable records={records.slice(0,5)} user={user} onStatus={changeStatus} onValidate={validateRecord}/></section></div>
         </>}
         {page==='operations'&&<>
           {createOpen&&<form className="panel create-form" onSubmit={createOperation}><div className="form-heading"><div><span className="eyebrow">سجل جديد</span><h2>تفاصيل العملية</h2></div></div><div className="form-grid"><label>وصف العملية<input required minLength="2" value={createForm.title} onChange={e=>setCreateForm({...createForm,title:e.target.value})} placeholder="مثال: بلاغ مروري"/></label><label>الفئة<input required value={createForm.category} onChange={e=>setCreateForm({...createForm,category:e.target.value})} placeholder="مرور، دورية…"/></label><label>المنطقة<input required value={createForm.region} onChange={e=>setCreateForm({...createForm,region:e.target.value})} placeholder="المنطقة أو الحي"/></label><label>الأولوية<select value={createForm.priority} onChange={e=>setCreateForm({...createForm,priority:e.target.value})}><option>عادي</option><option>منخفض</option><option>مرتفع</option><option>عاجل</option></select></label></div><button className="button button-primary">حفظ العملية</button></form>}
-          <section className="panel records-panel"><div className="panel-heading"><div><span className="eyebrow">السجل التشغيلي</span><h2>العمليات المسجلة</h2></div><span className="count-badge">{numberFormat.format(records.length)} سجل</span></div><RecordsTable records={records} user={user} onStatus={changeStatus}/></section>
+          <section className="panel records-panel"><div className="panel-heading"><div><span className="eyebrow">السجل التشغيلي</span><h2>العمليات المسجلة</h2></div><span className="count-badge">{numberFormat.format(records.length)} سجل</span></div><RecordsTable records={records} user={user} onStatus={changeStatus} onValidate={validateRecord}/></section>
         </>}
-        {page==='users'&&canManageUsers&&<section className="panel users-panel"><div className="panel-heading"><div><span className="eyebrow">إدارة الفريق</span><h2>الحسابات والصلاحيات</h2><p>حساب مسؤول قواعد البيانات ثابت، ولا يمكن تغييره من هذه القائمة.</p></div><span className="count-badge">{numberFormat.format(users.length)} حساب</span></div><div className="table-scroll"><table><thead><tr><th>الحساب</th><th>الدور الحالي</th><th>الصلاحية الجديدة</th><th>الحالة</th></tr></thead><tbody>{users.map(row=><tr key={row.id}><td><b>{row.name}</b><small>{row.email}</small></td><td><span className={`role-tag role-${row.role}`}>{roleNames[row.role]}</span></td><td>{row.role==='data_analyst'?<span className="fixed-role"><Icon name="lock"/> مسؤول النظام</span>:<select disabled={roleBusy===row.id} value={row.role} onChange={e=>changeRole(row.id,e.target.value)}><option value="mayor">العمدة</option><option value="police_commander">قائد الشرطة</option><option value="officer">ضابط</option></select>}</td><td><span className="active-state"><i/> نشط</span></td></tr>)}</tbody></table>{!users.length&&<div className="empty-state"><b>لا توجد حسابات بعد</b></div>}</div></section>}{page==='users'&&canManageUsers&&<section className="panel history-panel"><div className="panel-heading"><div><span className="eyebrow">سجل التدقيق</span><h2>تغييرات الصلاحيات</h2></div><span className="count-badge">آخر ١٠٠ تغيير</span></div>{roleHistory.length?<div className="table-scroll"><table><thead><tr><th>الحساب</th><th>تغيير بواسطة</th><th>من</th><th>إلى</th><th>التاريخ</th></tr></thead><tbody>{roleHistory.map(entry=><tr key={entry.id}><td><b>{entry.target_name}</b><small>{entry.target_email}</small></td><td>{entry.actor_name}</td><td>{entry.previous_role_label}</td><td>{entry.new_role_label}</td><td>{new Date(entry.changed_at).toLocaleString('ar-SA')}</td></tr>)}</tbody></table></div>:<div className="history-empty">لم تُسجل تغييرات بعد.</div>}</section>}
-        {page==='sql'&&canSql&&<div className="sql-page"><section className="panel sql-panel"><div className="panel-heading"><div><span className="eyebrow">أدوات البيانات</span><h2>محرر SQL</h2><p>{user.role==='data_analyst'?'لديك صلاحية تعديل سجلات العمليات وإنشاء جداول في مساحة المحلل.':'استعلامات القراءة متاحة ضمن نطاق دورك.'}</p></div><span className="sql-badge"><i/> PostgreSQL</span></div><form onSubmit={runSQL}><label className="sql-label" htmlFor="sql-editor">الاستعلام</label><textarea id="sql-editor" className="sql-editor" dir="ltr" spellCheck="false" value={sql} onChange={e=>setSql(e.target.value)}/><div className="sql-actions"><span>حد أقصى ٥٠٠ صف · مهلة ١٠ ثوانٍ</span><button className="button button-primary" disabled={sqlBusy||!sql.trim()}><Icon name="sql"/>{sqlBusy?'جارٍ التنفيذ…':'تشغيل الاستعلام'}</button></div></form></section>
-          <div className="sql-note"><Icon name="shield"/><span>{user.role==='data_analyst'?'تُنفذ استعلاماتك بدور قاعدة بيانات مقيّد؛ لا يمكنك إدارة أدوار PostgreSQL أو قراءة جداول الحسابات.':'تعمل استعلاماتك بصلاحية قراءة. يقيّد الخادم الوصول إلى سجلاتك أو سجلات القيادة حسب دورك.'}</span></div>
+        {page==='users'&&canManageUsers&&<><section className="role-catalog-section"><div className="panel-heading"><div><span className="eyebrow">نموذج الصلاحيات</span><h2>ماذا يستطيع كل دور أن يفعل؟</h2></div><span className="count-badge">{roleCatalog.length} أدوار</span></div><div className="role-catalog-grid">{roleCatalog.map(item=><article className={`role-card role-card-${item.role}`} key={item.role}><div><span className={`role-tag role-${item.role}`}>{item.label}</span><p>{item.description}</p></div><ul>{item.capabilities.map(capability=><li key={capability}>{capability}</li>)}</ul></article>)}</div></section><section className="panel employee-create-panel"><div className="panel-heading"><div><span className="eyebrow">إضافة موظف</span><h2>إنشاء حساب جديد</h2><p>حدّد الدور وكلمة مرور أولية من ١٢ حرفًا على الأقل. سيُطلب من الموظف تغييرها عند أول دخول.</p></div></div><form className="workflow-form" onSubmit={createEmployee}><div className="form-grid"><label>اسم الموظف<input required minLength="2" value={employeeForm.name} onChange={e=>setEmployeeForm({...employeeForm,name:e.target.value})}/></label><label>البريد الإلكتروني<input required type="email" dir="ltr" value={employeeForm.email} onChange={e=>setEmployeeForm({...employeeForm,email:e.target.value})}/></label><label>الدور<select value={employeeForm.role} onChange={e=>setEmployeeForm({...employeeForm,role:e.target.value})}><option value="officer">ضابط</option><option value="police_commander">قائد الشرطة</option><option value="mayor">العمدة</option></select></label><label>كلمة المرور الأولية<input required minLength="12" type="password" autoComplete="new-password" dir="ltr" value={employeeForm.temporary_password} onChange={e=>setEmployeeForm({...employeeForm,temporary_password:e.target.value})}/></label></div><button className="button button-primary" disabled={employeeBusy}><Icon name="plus"/>{employeeBusy?'جارٍ إنشاء الحساب…':'إنشاء الحساب'}</button></form></section><section className="panel users-panel"><div className="panel-heading"><div><span className="eyebrow">حسابات الموظفين</span><h2>الحسابات والصلاحيات</h2><p>غيّر دور الموظف لتحديث صلاحياته. دور مسؤول قواعد البيانات محجوز للحساب الأول.</p></div><span className="count-badge">{numberFormat.format(users.length)} حساب</span></div><div className="table-scroll"><table><thead><tr><th>الحساب</th><th>الدور</th><th>ما يستطيع فعله</th><th>تعيين دور</th></tr></thead><tbody>{users.map(row=><tr key={row.id}><td><b>{row.name}</b><small>{row.email}</small>{row.must_change_password&&<small className="password-pending">بانتظار تغيير كلمة المرور</small>}</td><td><span className={`role-tag role-${row.role}`}>{roleNames[row.role]}</span></td><td><details className="permission-details"><summary>{row.permissions?.length||0} صلاحيات</summary><ul>{(row.permissions||[]).map(permission=><li key={permission}>{permission}</li>)}</ul></details></td><td>{row.role==='data_analyst'?<span className="fixed-role"><Icon name="lock"/> مسؤول النظام</span>:<select disabled={roleBusy===row.id} value={row.role} onChange={e=>changeRole(row.id,e.target.value)}><option value="mayor">العمدة</option><option value="police_commander">قائد الشرطة</option><option value="officer">ضابط</option></select>}</td></tr>)}</tbody></table>{!users.length&&<div className="empty-state"><b>لا توجد حسابات بعد</b></div>}</div></section></>}{page==='users'&&canManageUsers&&<section className="panel history-panel"><div className="panel-heading"><div><span className="eyebrow">سجل إنشاء الحسابات</span><h2>الحسابات التي أُنشئت</h2></div><span className="count-badge">آخر ١٠٠ حساب</span></div>{accountHistory.length?<div className="table-scroll"><table><thead><tr><th>الموظف</th><th>الدور الأولي</th><th>أنشأه</th><th>التاريخ</th></tr></thead><tbody>{accountHistory.map(entry=><tr key={entry.id}><td><b>{entry.employee_name}</b><small>{entry.employee_email}</small></td><td>{entry.role_label}</td><td>{entry.creator_name}</td><td>{new Date(entry.created_at).toLocaleString('ar-SA')}</td></tr>)}</tbody></table></div>:<div className="history-empty">لم تُنشأ حسابات من صفحة الصلاحيات بعد.</div>}</section>}{page==='users'&&canManageUsers&&<section className="panel history-panel"><div className="panel-heading"><div><span className="eyebrow">سجل التدقيق</span><h2>تغييرات الصلاحيات</h2></div><span className="count-badge">آخر ١٠٠ تغيير</span></div>{roleHistory.length?<div className="table-scroll"><table><thead><tr><th>الحساب</th><th>تغيير بواسطة</th><th>من</th><th>إلى</th><th>التاريخ</th></tr></thead><tbody>{roleHistory.map(entry=><tr key={entry.id}><td><b>{entry.target_name}</b><small>{entry.target_email}</small></td><td>{entry.actor_name}</td><td>{entry.previous_role_label}</td><td>{entry.new_role_label}</td><td>{new Date(entry.changed_at).toLocaleString('ar-SA')}</td></tr>)}</tbody></table></div>:<div className="history-empty">لم تُسجل تغييرات بعد.</div>}</section>}
+        {page==='change-requests'&&canManageUsers&&<section className="panel records-panel"><div className="panel-heading"><div><span className="eyebrow">مراجعة التعديلات السابقة</span><h2>طلبات الضباط</h2><p>التعديل على سجل سبق تغييره لا ينفذ قبل اعتمادك.</p></div><span className="count-badge">{numberFormat.format(changeRequests.length)} طلب</span></div>{changeRequests.length?changeRequests.map(row=><article className="workflow-card" key={row.id}><div><h3>{row.operation_title} · #{row.operation_id}</h3><p>طلب من {row.requested_by_name} · النسخة الحالية {row.current_version} · المطلوبة {row.expected_version}</p><pre dir="ltr">{JSON.stringify(row.changes,null,2)}</pre></div><div className="inline-actions"><button className="button button-primary" onClick={()=>reviewChange(row.id,true)}>اعتماد</button><button className="button button-secondary" onClick={()=>reviewChange(row.id,false)}>رفض</button></div></article>):<div className="empty-state"><b>لا توجد تعديلات معلّقة</b></div>}</section>}
+        {page==='data-requests'&&<section className="panel records-panel"><div className="panel-heading"><div><span className="eyebrow">مسار الطلبات</span><h2>{user.role==='mayor'?'اطلب بيانات':'طلبات البيانات'}</h2><p>{user.role==='mayor'?'يستلم قائد الشرطة طلبك ويوجهه للموظف المناسب، ثم يراجع النتيجة قبل ظهورها.':'تُراجع الإجابات من قائد الشرطة قبل عرضها للعمدة.'}</p></div></div>{user.role==='mayor'&&<form className="workflow-form" onSubmit={createMayorRequest}><label>عنوان الطلب<input required value={requestForm.title} onChange={e=>setRequestForm({...requestForm,title:e.target.value})}/></label><label>ما البيانات المطلوبة؟<textarea required minLength="5" value={requestForm.question} onChange={e=>setRequestForm({...requestForm,question:e.target.value})}/></label><label>المستوى<select value={requestForm.complexity} onChange={e=>setRequestForm({...requestForm,complexity:e.target.value})}><option value="standard">اعتيادي</option><option value="advanced">متقدم</option></select></label><button className="button button-primary">إرسال الطلب</button></form>}{dataRequests.map(row=><article className="workflow-card" key={row.id}><div><h3>{row.title}</h3><p>{row.question}</p><span className="status-pill">{({pending_commander:'بانتظار توجيه القائد',routed_officer:'مسند للضابط',routed_analyst:'لدى مسؤول قواعد البيانات',pending_commander_review:'بانتظار مراجعة القائد',completed:'معتمد',rejected:'مرفوض'})[row.status]||row.status}</span>{row.result_text&&<p className="workflow-result">النتيجة: {row.result_text}</p>}</div>{user.role==='police_commander'&&row.status==='pending_commander'&&<div className="inline-actions"><button className="button button-primary" onClick={()=>routeRequest(row.id,'officer')}>توجيه للضابط</button><button className="button button-secondary" onClick={()=>routeRequest(row.id,'data_analyst')}>إرسال للمحلل</button></div>}{user.role==='police_commander'&&row.status==='pending_commander_review'&&<div className="inline-actions"><button className="button button-primary" onClick={()=>reviewRequest(row.id,true)}>اعتماد النتيجة</button><button className="button button-secondary" onClick={()=>reviewRequest(row.id,false)}>رفض</button></div>}{['officer','data_analyst'].includes(user.role)&&row.status===(user.role==='officer'?'routed_officer':'routed_analyst')&&<form className="workflow-answer" onSubmit={e=>submitRequestResult(e,row.id)}><textarea required minLength="3" value={draftResults[row.id]||''} onChange={e=>setDraftResults({...draftResults,[row.id]:e.target.value})} placeholder="اكتب النتيجة أو ملخص البيانات"/><button className="button button-primary">إرسال للقائد للمراجعة</button>{user.role==='officer'&&<button type="button" className="text-action" onClick={()=>escalateRequest(row.id)}>تصعيد للمحلل</button>}</form>}</article>)}{!dataRequests.length&&<div className="empty-state"><b>{user.role==='mayor'?'لم ترسل طلبات بعد':'لا توجد طلبات في هذا المسار'}</b></div>}</section>}
+        {page==='reports'&&<><section className="panel records-panel"><div className="panel-heading"><div><span className="eyebrow">الرسوم البيانية</span><h2>{user.role==='police_commander'?'مراجعة الرسوم':user.role==='mayor'?'الرسوم المعتمدة':'رسومي البيانية'}</h2><p>{user.role==='police_commander'?'اعتمد الرسم بعد التحقق من صحة المصدر وطريقة العرض.':user.role==='mayor'?'تظهر هنا الرسوم التي اعتمدها قائد الشرطة.':'أنشئ رسمًا من استعلام قراءة، ثم أرسله للقائد للمراجعة.'}</p></div></div>{['officer','data_analyst'].includes(user.role)&&<form className="workflow-form" onSubmit={createReport}><label>عنوان الرسم<input required value={reportForm.title} onChange={e=>setReportForm({...reportForm,title:e.target.value})}/></label><label>استعلام القراءة<textarea required dir="ltr" value={reportForm.statement} onChange={e=>setReportForm({...reportForm,statement:e.target.value})}/></label><div className="form-grid"><label>عمود الفئات<input required dir="ltr" value={reportForm.label_column} onChange={e=>setReportForm({...reportForm,label_column:e.target.value})}/></label><label>عمود الأرقام<input required dir="ltr" value={reportForm.value_column} onChange={e=>setReportForm({...reportForm,value_column:e.target.value})}/></label></div><button className="button button-primary">إنشاء الرسم وإرساله للمراجعة</button></form>}{reports.map(report=><article className="workflow-card" key={report.id}><div><h3>{report.title}</h3><p>إعداد {report.author_name||'مسؤول قواعد البيانات'} · {report.status==='approved'?'معتمد':report.status==='pending_commander'?'بانتظار القائد':'مرفوض'}</p><div className="chart-bars">{(report.chart_data||[]).map((point,index)=>{const max=Math.max(1,...report.chart_data.map(item=>Number(item.value)||0));return <div key={index} className="chart-bar-row"><span>{point.label}</span><i><b style={{width:`${Math.max(2,Number(point.value)/max*100)}%`}}/></i><strong>{numberFormat.format(point.value)}</strong></div>})}</div>{report.review_note&&<p>{report.review_note}</p>}</div>{user.role==='police_commander'&&<div className="inline-actions"><button className="button button-primary" onClick={()=>reviewReport(report.id,true)}>اعتماد</button><button className="button button-secondary" onClick={()=>reviewReport(report.id,false)}>رفض</button></div>}</article>)}{!reports.length&&<div className="empty-state"><b>لا توجد رسوم متاحة</b></div>}</section></>}
+        {page==='lab-tasks'&&<section className="spatial-labs">{spatialLabs.map(lab=><article className="panel lab-panel" key={lab.id}><div className="panel-heading"><div><span className="eyebrow">مختبر SQL مكاني</span><h2>{lab.title}</h2><p dir="ltr">{lab.source}</p></div><button className="button button-primary" onClick={()=>setPage('sql')}><Icon name="sql"/>فتح محرر SQL</button></div><ol className="lab-task-list">{lab.tasks.map((task,index)=><li key={`${lab.id}-${index}`}><span className="lab-task-number">{index<4?`E${index+1}`:'✓'}</span><span>{task}</span></li>)}</ol><p className="lab-rubric">{lab.rubric}</p><div className="sql-note lab-note"><Icon name="shield"/><span>جداول تمارين النقاط والمسافات أُعدّت داخل مخطط spatial_lab في قاعدة البيانات؛ بيانات الحوادث الفعلية متاحة في training.crashes للأدوار المصرّح لها.</span></div></article>)}</section>}
+        {page==='command-log'&&canManageUsers&&<section className="panel records-panel"><div className="panel-heading"><div><span className="eyebrow">سجل محلي مشفّر</span><h2>حالة أوامر SQL</h2><p>تُراجع صلاحية صاحب الأمر قبل إعادة تشغيله، ويُسجل نجاحه أو سبب تعذره.</p></div><button className="button button-secondary" onClick={()=>api('/api/sql-console/commands').then(setCommandHistory).catch(exception=>setError(exception.message))}>تحديث السجل</button></div>{commandHistory.length?<div className="table-scroll"><table><thead><tr><th>الأمر</th><th>الحالة</th><th>عدد المحاولات</th><th>آخر نتيجة أو خطأ</th><th>آخر تحديث</th></tr></thead><tbody>{commandHistory.map(item=><tr key={item.command_id}><td><code dir="ltr">{item.statement}</code><small>{item.command_id}</small></td><td><span className={`status-pill ${item.status==='applied'?'done':''}`}>{({queued:'بانتظار الاتصال',running:'جارٍ التنفيذ',applied:'تم التنفيذ',failed:'تعذر التنفيذ'})[item.status]||item.status}</span></td><td>{numberFormat.format(item.attempts)}</td><td>{item.last_error|| (item.result?`تم التنفيذ · ${numberFormat.format(item.result.affected_rows||0)} صف`:'—')}</td><td>{new Date(item.updated_at).toLocaleString('ar-SA')}</td></tr>)}</tbody></table></div>:<div className="empty-state"><b>لا توجد أوامر في السجل بعد</b><p>ستظهر هنا الأوامر المنفذة من محرر SQL والأوامر المحفوظة عند الانقطاع.</p></div>}</section>}
+        {page==='sql'&&canSql&&<div className="sql-page"><section className="panel sql-panel"><div className="panel-heading"><div><span className="eyebrow">أدوات البيانات</span><h2>محرر SQL</h2><p>{user.role==='data_analyst'?'لديك صلاحية تعديل بيانات العمليات والتدريب وإنشاء الجداول.':user.role==='mayor'?'استعلامات قراءة للبيانات المعتمدة فقط.':user.role==='officer'?'استعلامات قراءة لسجلاتك وبيانات التدريب؛ الإضافة والتعديل عبر النماذج المحددة.':'استعلامات قراءة لجميع السجلات وبيانات التدريب.'}</p></div><span className={`sql-badge ${sqlConnection?.connected?'connection-live':'connection-offline'}`}><i/>{sqlConnection?.connected?`متصل · ${sqlConnection.database}`:sqlConnection?'Neon غير متصل · ستُحفظ الأوامر':'يتحقق من اتصال Neon…'}</span></div><form onSubmit={runSQL}><label className="sql-label" htmlFor="sql-editor">الاستعلام</label><textarea id="sql-editor" className="sql-editor" dir="ltr" spellCheck="false" value={sql} onChange={e=>setSql(e.target.value)}/><div className="sql-actions"><span>حد أقصى ٥٠٠ صف · مهلة ١٠ ثوانٍ</span><button className="button button-primary" disabled={sqlBusy||!sql.trim()}><Icon name="sql"/>{sqlBusy?'جارٍ التنفيذ…':'تشغيل الاستعلام'}</button></div></form></section>
+          <div className="sql-note"><Icon name="shield"/><span>{user.role==='data_analyst'?'استعلاماتك تنفذ مباشرة على Police_training بصلاحية إدارة بيانات العمليات والتدريب.':'يُنفذ SQL على Police_training بوضع القراءة فقط؛ يقيّد الخادم وقاعدة البيانات الصفوف والمخططات حسب دورك.'}</span></div>
           {sqlResult&&<SQLResults result={sqlResult}/>}
         </div>}
       </div>
@@ -231,9 +332,10 @@ function AppShell({ user, onLogout }) {
 
 export default function Home() {
   const [user, setUser] = useState(null)
+  const [canRegister, setCanRegister] = useState(false)
   const [loading, setLoading] = useState(true)
-  useEffect(()=>{api('/api/auth/me').then(setUser).catch(()=>{}).finally(()=>setLoading(false))},[])
+  useEffect(()=>{Promise.all([api('/api/auth/me').then(setUser).catch(()=>{}),api('/api/auth/registration-status').then(result=>setCanRegister(result.allowed)).catch(()=>{})]).finally(()=>setLoading(false))},[])
   async function logout() { await api('/api/auth/logout',{method:'POST'}).catch(()=>{}); setUser(null) }
   if (loading) return <div className="loading-screen"><div className="loading-mark"><Icon name="shield"/></div><span>يتم تجهيز مساحة العمل</span></div>
-  return user ? <AppShell user={user} onLogout={logout}/> : <Auth onLogin={setUser}/>
+  return user ? (user.must_change_password ? <ChangePassword user={user} onChanged={setUser}/> : <AppShell user={user} onLogout={logout}/>) : <Auth onLogin={setUser} canRegister={canRegister}/>
 }

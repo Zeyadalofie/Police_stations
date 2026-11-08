@@ -636,6 +636,10 @@ class SQLStatement(BaseModel):
     statement: str = Field(min_length=1, max_length=20_000)
 
 
+class LabTaskRequest(BaseModel):
+    task_id: str = Field(min_length=3, max_length=80)
+
+
 @app.get("/api/health")
 def health():
     return {"ok": True, "service": "مرصد العمليات API"}
@@ -1121,7 +1125,7 @@ def query_as_user(user: dict, statement: str, max_rows: int = 500):
             truncated=len(rows)>max_rows
             rows=rows[:max_rows]
             output=[[None if row[column] is None else row[column] if isinstance(row[column],(str,int,float,bool)) else str(row[column]) for column in columns] for row in rows]
-    return {"columns":columns,"rows":output,"affected_rows":len(output),"truncated":truncated}
+    return {"columns":columns,"rows":output,"affected_rows":len(output),"truncated":truncated,"connected":True,"database":connection_info["database_name"],"execution_role":SQL_DATABASE_ROLES[user["role"]]}
 
 
 @app.post("/api/reports")
@@ -1223,6 +1227,39 @@ SPATIAL_LABS = [
             "التسليم: الاستعلامات الأربعة ونتائجها وشرح قصير يذكر مستوى الصفوف والدليل والقيود وخطأ واحدًا تم تشخيصه.",
         ],
     },
+    {
+        "id": "district-month-analytics",
+        "title": "تحليل الجرائم والحوادث حسب المنطقة والشهر",
+        "source": "02_district_month_analytics_team_project_student.ipynb",
+        "rubric": "صحة SQL 40، التحقق والمطابقة 25، التفسير 20، قابلية الإعادة وتقليل البيانات 15.",
+        "tasks": [
+            "المهمة اليومية: جدول منطقة-شهر، تغطية المصدرين، ومطابقتان للمجاميع؛ اشرح قاعدة الحدود والأشهر الفارغة والفرق بين عدد قياسات الإصابات ومجموع الإصابات.",
+            "التسليم: الاستعلامات الأربعة ونتائجها وشرح مستوى الصفوف والدليل والقيود وخطأ واحد تم تشخيصه.",
+        ],
+        "exercises": [
+            {"id":"district-e1","title":"E1 · جميع صفوف المنطقة والشهر (48 صفًا)"},
+            {"id":"district-e2","title":"E2 · تغطية الجرائم والحوادث مع إبقاء غير المطابق"},
+            {"id":"district-e3","title":"E3 · إجمالي الجرائم السنوي لكل منطقة، بما فيها الصفر"},
+            {"id":"district-e4","title":"E4 · عدد الحوادث، وعدد قياسات الإصابات، ومجموعها"},
+        ],
+    },
+    {
+        "id": "dashboard-handover",
+        "title": "لوحة المؤشرات والتصدير وتسليم التقرير",
+        "source": "03_dashboard_export_and_reporting_handover_student.ipynb",
+        "rubric": "صحة SQL 40، التحقق والمطابقة 25، التفسير 20، قابلية الإعادة وتقليل البيانات 15.",
+        "tasks": [
+            "المهمة اليومية: جهّز CSV وملف provenance JSON وملخص تسليم مدته خمس دقائق يشرح مستوى الصفوف وبديلًا فاشلًا ونتيجة تحقق وقيدًا واحدًا.",
+            "اشرح مقام متوسط الإصابات: عدد القياسات المعروفة، لا كل الحوادث؛ القيمة المفقودة ليست صفرًا.",
+            "أرفق أدلة مطابقة مجموعات كل مصدر، ومجموع المعيّن وغير المعيّن، وعدد صفوف المنطقة-الشهر.",
+        ],
+        "exercises": [
+            {"id":"dashboard-e1","title":"E1 · مجموع الجرائم والحوادث حسب الشهر (12 شهرًا)"},
+            {"id":"dashboard-e2","title":"E2 · LAG للجرائم مع تقسيم مستقل لكل منطقة"},
+            {"id":"dashboard-e3","title":"E3 · متوسط الإصابات المجمّع مع مقام القياسات المعروفة"},
+            {"id":"dashboard-e4","title":"E4 · مقارنة غير المطابق بين المصدرين"},
+        ],
+    },
 ]
 
 
@@ -1289,6 +1326,114 @@ def run_sql_command(command_id: str, user: dict, statement: str):
                     (command_id, user["id"], digest, statement, Jsonb(result)),
                 )
     return result
+
+
+LAB_TASK_SQL = {
+    "district-e1": """SELECT dist_num,month,crime_records,crash_records FROM spatial_lab.integrated_report ORDER BY dist_num,month""",
+    "district-e2": """SELECT source,total,assigned,unmatched FROM (
+        SELECT 'crime'::text AS source,COUNT(*)::bigint AS total,COUNT(dist_num)::bigint AS assigned,COUNT(*) FILTER (WHERE dist_num IS NULL)::bigint AS unmatched FROM spatial_lab.assigned_crime
+        UNION ALL
+        SELECT 'traffic'::text,COUNT(*)::bigint,COUNT(dist_num)::bigint,COUNT(*) FILTER (WHERE dist_num IS NULL)::bigint FROM spatial_lab.assigned_traffic
+    ) AS coverage ORDER BY CASE source WHEN 'crime' THEN 1 ELSE 2 END""",
+    "district-e3": """SELECT d.dist_num,COALESCE(SUM(r.crime_records),0)::bigint AS crime_records
+        FROM training.districts AS d LEFT JOIN spatial_lab.integrated_report AS r USING(dist_num)
+        GROUP BY d.dist_num ORDER BY d.dist_num""",
+    "district-e4": """SELECT COUNT(*)::bigint AS assigned_crashes,COUNT(injuries_total)::bigint AS observed_injuries,SUM(injuries_total)::bigint AS injuries
+        FROM spatial_lab.assigned_traffic WHERE dist_num IS NOT NULL""",
+    "dashboard-e1": """SELECT month,SUM(crime_records)::bigint AS crimes,SUM(crash_records)::bigint AS crashes
+        FROM spatial_lab.integrated_report GROUP BY month ORDER BY month""",
+    "dashboard-e2": """SELECT dist_num,month,crime_records,LAG(crime_records) OVER(PARTITION BY dist_num ORDER BY month) AS previous
+        FROM spatial_lab.integrated_report ORDER BY dist_num,month""",
+    "dashboard-e3": """SELECT d.dist_num,COALESCE(SUM(r.observed_injuries),0)::bigint AS observed,
+        ROUND(SUM(r.injuries)::numeric/NULLIF(SUM(r.observed_injuries),0),3) AS mean_injuries
+        FROM training.districts AS d LEFT JOIN spatial_lab.integrated_report AS r USING(dist_num)
+        GROUP BY d.dist_num ORDER BY d.dist_num""",
+    "dashboard-e4": """SELECT source,unmatched FROM (
+        SELECT 'crime'::text AS source,COUNT(*) FILTER (WHERE dist_num IS NULL)::bigint AS unmatched FROM spatial_lab.assigned_crime
+        UNION ALL
+        SELECT 'traffic'::text,COUNT(*) FILTER (WHERE dist_num IS NULL)::bigint FROM spatial_lab.assigned_traffic
+    ) AS coverage ORDER BY CASE source WHEN 'crime' THEN 1 ELSE 2 END""",
+}
+
+
+@app.post("/api/labs/tasks/run")
+def run_spatial_lab_task(body: LabTaskRequest, user=Depends(current_user)):
+    statement = LAB_TASK_SQL.get(body.task_id)
+    if statement is None:
+        raise HTTPException(404, "المهمة غير موجودة")
+    result = run_sql_command(str(uuid4()), user, statement)
+    if not result["rows"]:
+        raise HTTPException(503, "لم تُرجع قاعدة البيانات صفوفًا لهذه المهمة؛ تأكد من جاهزية بيانات التدريب.")
+    return {"task_id": body.task_id, "statement": statement, "result": result}
+
+
+def lab_result_dicts(result: dict):
+    return [dict(zip(result["columns"], row)) for row in result["rows"]]
+
+
+@app.get("/api/labs/district-dashboard")
+def district_month_dashboard(user=Depends(current_user)):
+    monthly = query_as_user(user, """SELECT month,SUM(crime_records)::bigint AS crimes,SUM(crash_records)::bigint AS crashes
+        FROM spatial_lab.integrated_report GROUP BY month ORDER BY month""", 24)
+    districts = query_as_user(user, """SELECT d.dist_num,COALESCE(SUM(r.crime_records),0)::bigint AS crimes,
+        COALESCE(SUM(r.crash_records),0)::bigint AS crashes,COALESCE(SUM(r.observed_injuries),0)::bigint AS observed_injuries,
+        SUM(r.injuries)::bigint AS injuries,
+        ROUND(SUM(r.injuries)::numeric/NULLIF(SUM(r.observed_injuries),0),3) AS mean_injuries
+        FROM training.districts AS d LEFT JOIN spatial_lab.integrated_report AS r USING(dist_num)
+        GROUP BY d.dist_num ORDER BY d.dist_num""", 24)
+    coverage = query_as_user(user, """SELECT source,total,assigned,unmatched FROM (
+        SELECT 'crime'::text AS source,COUNT(*)::bigint AS total,COUNT(dist_num)::bigint AS assigned,COUNT(*) FILTER (WHERE dist_num IS NULL)::bigint AS unmatched FROM spatial_lab.assigned_crime
+        UNION ALL
+        SELECT 'traffic'::text,COUNT(*)::bigint,COUNT(dist_num)::bigint,COUNT(*) FILTER (WHERE dist_num IS NULL)::bigint FROM spatial_lab.assigned_traffic
+    ) AS sources ORDER BY CASE source WHEN 'crime' THEN 1 ELSE 2 END""", 4)
+    reconciliation = query_as_user(user, """SELECT
+        (SELECT COUNT(*) FROM spatial_lab.assigned_crime)::bigint AS source_crimes,
+        (SELECT COUNT(dist_num) FROM spatial_lab.assigned_crime)::bigint AS assigned_crimes,
+        (SELECT COUNT(*) FROM spatial_lab.assigned_crime WHERE dist_num IS NULL)::bigint AS unmatched_crimes,
+        (SELECT COALESCE(SUM(crime_records),0) FROM spatial_lab.integrated_report)::bigint AS report_crimes,
+        (SELECT COUNT(*) FROM spatial_lab.assigned_traffic)::bigint AS source_crashes,
+        (SELECT COUNT(dist_num) FROM spatial_lab.assigned_traffic)::bigint AS assigned_crashes,
+        (SELECT COUNT(*) FROM spatial_lab.assigned_traffic WHERE dist_num IS NULL)::bigint AS unmatched_crashes,
+        (SELECT COALESCE(SUM(crash_records),0) FROM spatial_lab.integrated_report)::bigint AS report_crashes,
+        (SELECT COUNT(*) FROM spatial_lab.integrated_report)::bigint AS report_rows,
+        (SELECT COUNT(*)*12 FROM training.districts)::bigint AS expected_rows""", 2)
+    monthly_rows=lab_result_dicts(monthly)
+    district_rows=lab_result_dicts(districts)
+    coverage_rows=lab_result_dicts(coverage)
+    check=lab_result_dicts(reconciliation)[0]
+    if not monthly_rows or not district_rows or len(coverage_rows)!=2:
+        raise HTTPException(503, "لم تُجهز جداول التحليل السنوي؛ أعد تشغيل خدمة API لتحديث بيانات التمارين.")
+    checks={
+        "crime_source_matches_assignment": check["source_crimes"] == check["assigned_crimes"]+check["unmatched_crimes"],
+        "crime_assignment_matches_report": check["assigned_crimes"] == check["report_crimes"],
+        "traffic_source_matches_assignment": check["source_crashes"] == check["assigned_crashes"]+check["unmatched_crashes"],
+        "traffic_assignment_matches_report": check["assigned_crashes"] == check["report_crashes"],
+        "district_month_calendar_complete": check["report_rows"] == check["expected_rows"] and check["report_rows"] > 0,
+    }
+    if any(not value for value in checks.values()):
+        raise HTTPException(503, "فشل تحقق مطابقة بيانات التدريب؛ لم أعد لوحة بنتيجة ناقصة.")
+    provenance_result=query_as_user(user,"SELECT mode FROM training.provenance LIMIT 1",2)
+    provenance_rows=lab_result_dicts(provenance_result)
+    return {
+        "database": monthly.get("database"),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "monthly": monthly_rows,
+        "districts": district_rows,
+        "coverage": coverage_rows,
+        "reconciliation": check,
+        "checks": checks,
+        "provenance": {
+            "mode": provenance_rows[0]["mode"] if provenance_rows else "unknown",
+            "year": 2025,
+            "grain": "district-month; 12 calendar months per district",
+            "district_assignment": "ST_Covers; alphabetically lowest dist_num wins boundary ties",
+            "sources": ["training.crimes", "training.crashes", "training.districts"],
+            "views": ["spatial_lab.assigned_crime", "spatial_lab.assigned_traffic", "spatial_lab.integrated_report"],
+            "injury_measure": "injuries_total sum with observed value count as denominator; NULL is not converted to zero",
+            "reconciliation": check,
+            "checks": checks,
+        },
+    }
 
 
 async def replay_offline_commands():

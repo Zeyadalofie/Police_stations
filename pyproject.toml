@@ -1,24 +1,15 @@
 [project]
-name = "police-operations-log-data-analysis"
+name = "week-5-project-4"
 version = "0.1.0"
-description = "Personal data analysis dashboard with customer-specific connectors"
+description = "Role-based police operations workspace"
 readme = "README.md"
-authors = [
-    { name = "Zeyadalofie", email = "zeyad3537@gmail.com" }
-]
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115,<1",
     "uvicorn[standard]>=0.34,<1",
-    "python-multipart>=0.0.20,<1",
-    "cryptography>=44,<47",
-    "authlib>=1.5,<2",
-    "httpx>=0.28,<1",
-    "itsdangerous>=2.2,<3",
-    "boto3>=1.37,<2",
-    "pandas>=2.2,<4",
     "python-dotenv>=1,<2",
     "psycopg[binary]>=3.2,<4",
+    "itsdangerous>=2.2,<3",
 ]
 
 [build-system]

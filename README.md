@@ -1,85 +1,35 @@
-# Mirsad — Operations Data Analysis Dashboard
+# مرصاد — مساحة عمليات حسب الدور
 
-Mirsad is a locally run data analysis dashboard for operations data. It combines a React and Vite frontend with a Python and FastAPI backend, and keeps each user's account, data, and integrations separate.
+واجهة عربية جديدة لمتابعة العمليات، مبنية بـ Next.js وReact، مع API عبر FastAPI وقاعدة PostgreSQL على Neon.
 
-## Features
+## الأدوار
 
-- Upload and preview CSV and JSON datasets (up to 15 MB).
-- Review dataset dimensions, missing values, and summary statistics.
-- Create bar and pie charts from selected dataset columns.
-- Generate synthetic operations datasets with a per-user local Ollama model; generated records are validated with the rules in `src/TODOs/rules.py`.
-- Configure an AI provider per user, including local Ollama and OpenAI-compatible APIs. The chart assistant sends aggregated statistics to the model, not the raw dataset rows.
-- Connect Google Drive or S3-compatible storage, choose a per-user destination folder or prefix, and save reports there.
-- Sign in with email and password, with optional Google and Apple OAuth configuration.
+- **مسؤول قواعد البيانات:** يدير حسابات الفريق وصلاحياتها، ويمكنه تشغيل SQL ضمن صلاحيات دور قاعدة بيانات مخصص.
+- **قائد الشرطة:** يتابع جميع العمليات ويحدّث حالتها ويشغّل استعلامات القراءة.
+- **الضابط:** يسجل العمليات ويتابع سجلاته ويشغّل استعلامات القراءة ضمن نطاق سجلاته.
+- **العمدة:** يطّلع على المؤشرات والسجل فقط، ولا يظهر له محرر SQL أو أدوات التعديل.
 
-## Requirements
+التحقق من الصلاحيات يتم في FastAPI وقاعدة البيانات؛ الواجهة تخفي الأدوات غير المتاحة لتسهيل الاستخدام فقط.
 
-- Python 3.10 or later
-- [uv](https://docs.astral.sh/uv/)
-- Node.js and npm
-- PostgreSQL 14 or later
+## تشغيل محلي
 
-## Run locally on Windows
+1. انسخ `.env.example` إلى `.env`، وأضف رابط Neon في `NEON_ADMIN_DATABASE_URL`.
+2. ضع بريد الحساب الأول في `INITIAL_ANALYST_EMAIL`. عند التسجيل بهذا البريد يُمنح دور مسؤول قواعد البيانات، ويظل الحساب الوحيد بهذا الدور.
+3. شغّل FastAPI من جذر المشروع:
 
-Open two PowerShell terminals in the project root.
+   ```sh
+   uv sync
+   uv run uvicorn backend.app:app --reload --port 8000
+   ```
 
-### 1. Install Python dependencies
+4. شغّل الواجهة:
 
-```powershell
-uv sync
-```
+   ```sh
+   cd frontend
+   npm install
+   npm run dev
+   ```
 
-### 2. Start the backend
+   افتح `http://localhost:3000`.
 
-In the first terminal, run:
-
-```powershell
-uv run python -m uvicorn src.api:app --reload --host 127.0.0.1 --port 8000
-```
-
-### 3. Start the frontend
-
-In the second terminal, run:
-
-```powershell
-cd frontend
-npm.cmd install
-npm.cmd run dev
-```
-
-Run `npm.cmd install` once, or again after frontend dependencies change. Open the local URL printed by Vite, usually `http://localhost:5173`.
-
-Use `npm.cmd` in PowerShell if its execution policy blocks `npm.ps1`.
-
-## Configuration
-
-Keep credentials in the local `.env` file; never put secrets in source code or commit `.env` to Git. Set strong values for `SESSION_SECRET` and `CREDENTIALS_ENCRYPTION_KEY`. Add OAuth credentials only when enabling the corresponding sign-in or storage integration.
-
-Set `DATABASE_URL` to your PostgreSQL database. For a local PostgreSQL installation using a local socket, use:
-
-```dotenv
-DATABASE_URL=postgresql:///police_operations?user=YOUR_POSTGRES_USER
-```
-
-The backend creates its application tables on startup. The existing SQLite file (`users.sqlite3`) is not copied automatically; migrate it separately if you need to keep existing accounts or uploaded data.
-
-The SQL console appears only for email addresses listed in `SQL_CONSOLE_ADMIN_EMAILS` (comma-separated). It can run read and write SQL, accepts one statement per run, limits execution to 10 seconds, and returns at most 500 rows. Keep this allowlist restricted to trusted administrators.
-
-For a Google OAuth web client used locally, register these authorized redirect URIs:
-
-```text
-http://localhost:8000/api/auth/google/callback
-http://localhost:8000/api/connections/google-drive/callback
-```
-
-If needed, register this authorized JavaScript origin separately:
-
-```text
-http://localhost:5173
-```
-
-The Google Drive integration requires OAuth configuration on the backend. Each user then connects their own Google account from within the application.
-
-## Production deployment
-
-This repository is configured for local development. Before exposing it publicly, use HTTPS, a managed database, CSRF protection, login rate limits, and production OAuth settings. Review the deployment configuration and secret handling before launch.
+عند بدء الخادم ينشئ التطبيق جداول `app_users` و`operation_records` وسجل تغييرات الصلاحيات، ويجهّز أدوار PostgreSQL محدودة لمحرر SQL. لا تعدّل جداول `training` الموجودة في Neon.

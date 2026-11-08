@@ -1,16 +1,8 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-
-# Virtual environments
-.venv
-
+.venv/
 .env
-frontend/node_modules/
-frontend/dist/
-*.sqlite3
 __pycache__/
+*.py[cod]
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+*.sqlite3

@@ -120,12 +120,14 @@ function LabTaskChart({ result }) {
   if (!result?.columns?.length || !result.rows?.length) return null
 
   const monthIndex = result.columns.indexOf('month')
+  const isChartNumber = value => typeof value === 'number' ? Number.isFinite(value) : typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))
   const labelIndexes = result.columns.map((_, index) => index).filter(index => {
     if (index === monthIndex) return false
-    return result.rows.some(row => row[index] != null && typeof row[index] === 'string')
+    if (result.columns[index] === 'dist_num') return true
+    return result.rows.some(row => row[index] != null && typeof row[index] === 'string' && !isChartNumber(row[index]))
   })
   const metricIndexes = result.columns.map((_, index) => index).filter(index =>
-    index !== monthIndex && result.rows.some(row => typeof row[index] === 'number' && Number.isFinite(row[index]))
+    index !== monthIndex && result.columns[index] !== 'dist_num' && result.rows.some(row => isChartNumber(row[index]))
   )
   if (!metricIndexes.length) return null
 

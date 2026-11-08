@@ -1,17 +1,29 @@
 [project]
-name = "weak-5-porject-4"
+name = "police-operations-log-data-analysis"
 version = "0.1.0"
-description = "Add your description here"
+description = "Personal data analysis dashboard with customer-specific connectors"
 readme = "README.md"
 authors = [
-    { name = "Zeyadalofie", email = "Zeyad3537@gmail.com" }
+    { name = "Zeyadalofie", email = "zeyad3537@gmail.com" }
 ]
-requires-python = ">=3.14"
-dependencies = []
-
-[project.scripts]
-weak-5-porject-4 = "weak_5_porject_4:main"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.34,<1",
+    "python-multipart>=0.0.20,<1",
+    "cryptography>=44,<47",
+    "authlib>=1.5,<2",
+    "httpx>=0.28,<1",
+    "itsdangerous>=2.2,<3",
+    "boto3>=1.37,<2",
+    "pandas>=2.2,<4",
+    "python-dotenv>=1,<2",
+    "psycopg[binary]>=3.2,<4",
+]
 
 [build-system]
-requires = ["uv_build>=0.13.6,<0.14.0"]
+requires = ["uv_build>=0.13.5,<0.14.0"]
 build-backend = "uv_build"
+
+[tool.uv]
+package = false

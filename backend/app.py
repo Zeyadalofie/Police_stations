@@ -491,6 +491,10 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="مرصد العمليات API", version="0.1.0", lifespan=lifespan)
 origins = [x.strip() for x in os.getenv("FRONTEND_ORIGINS", "http://localhost:3000").split(",") if x.strip()]
+if os.getenv("COOKIE_SECURE", "false").lower() != "true":
+    for local_origin in ("http://localhost:3000", "http://127.0.0.1:3000"):
+        if local_origin not in origins:
+            origins.append(local_origin)
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"], allow_headers=["Content-Type"])
 app.add_middleware(
     SessionMiddleware,
@@ -1119,6 +1123,7 @@ def query_as_user(user: dict, statement: str, max_rows: int = 500):
             connection.execute(sql.SQL("SET LOCAL ROLE {}").format(sql.Identifier(role)))
             path="spatial_lab, operations, analyst_workspace, training, public" if user["role"]=="data_analyst" else "spatial_lab, operations, training, public"
             connection.execute("SELECT set_config('search_path',%s,TRUE)",(path,))
+            connection_info=connection.execute("SELECT current_database() AS database_name").fetchone()
             cursor=connection.execute(statement)
             columns=[column.name for column in cursor.description] if cursor.description else []
             rows=cursor.fetchmany(max_rows+1) if columns else []
@@ -1310,7 +1315,7 @@ def run_sql_command(command_id: str, user: dict, statement: str):
             else:
                 search_path = "spatial_lab, operations, training, public"
             connection.execute("SELECT set_config('search_path',%s,TRUE)", (search_path,))
-            connection_info = connection.execute("SELECT current_database() AS database_name").fetchone()
+            connection_info = connection.execute("SELECT current_database() AS database_name, CURRENT_TIMESTAMP AS executed_at").fetchone()
             cursor = connection.execute(statement)
             columns = [column.name for column in cursor.description] if cursor.description else []
             records = cursor.fetchmany(501) if columns else []
@@ -1318,13 +1323,19 @@ def run_sql_command(command_id: str, user: dict, statement: str):
             records = records[:500]
             rows = [[None if record[column] is None else record[column] if isinstance(record[column], (str, int, float, bool)) else str(record[column]) for column in columns] for record in records]
             affected_rows = len(rows) if columns else max(cursor.rowcount, 0)
-            result = {"columns": columns, "rows": rows, "affected_rows": affected_rows, "truncated": truncated, "connected": True, "database": connection_info["database_name"], "execution_role": SQL_DATABASE_ROLES[user["role"]]}
+            result = {"columns": columns, "rows": rows, "affected_rows": affected_rows, "truncated": truncated, "connected": True, "database": connection_info["database_name"], "execution_role": SQL_DATABASE_ROLES[user["role"]], "executed_by": user["name"], "actor_id": user["id"], "executed_at": connection_info["executed_at"].isoformat()}
             if user["role"] == "data_analyst":
                 connection.execute("RESET ROLE")
                 connection.execute(
                     "INSERT INTO app_private.sql_command_log(command_id,actor_id,statement_hash,statement,result) VALUES(%s,%s,%s,%s,%s)",
                     (command_id, user["id"], digest, statement, Jsonb(result)),
                 )
+    if user["role"] != "data_analyst":
+        with db() as log_connection:
+            log_connection.execute(
+                "INSERT INTO app_private.sql_command_log(command_id,actor_id,statement_hash,statement,result) VALUES(%s,%s,%s,%s,%s) ON CONFLICT(command_id) DO NOTHING",
+                (command_id, user["id"], digest, statement, Jsonb(result)),
+            )
     return result
 
 
@@ -1487,15 +1498,20 @@ async def replay_offline_commands():
 @app.get("/api/sql-console/commands")
 def sql_command_history(user=Depends(require_roles("data_analyst"))):
     commands = {
-        item["command_id"]: {"command_id": item["command_id"], "statement": item["payload"].get("statement", ""), "status": item["status"], "attempts": item["attempts"], "last_error": item["last_error"], "result": item["result"], "created_at": item["created_at"], "updated_at": item["updated_at"]}
+        item["command_id"]: {"command_id": item["command_id"], "statement": item["payload"].get("statement", ""), "executed_by": item["payload"].get("user", {}).get("name"), "actor_role": item["payload"].get("user", {}).get("role"), "status": item["status"], "attempts": item["attempts"], "last_error": item["last_error"], "result": item["result"], "created_at": item["created_at"], "updated_at": item["updated_at"]}
         for item in OFFLINE_QUEUE.list(100)
     }
     try:
         with db() as connection:
-            rows = connection.execute("SELECT command_id,statement,result,executed_at FROM app_private.sql_command_log ORDER BY executed_at DESC LIMIT 100").fetchall()
+            rows = connection.execute("""
+                SELECT l.command_id,l.statement,l.result,l.executed_at,u.name AS executed_by,u.role AS actor_role
+                FROM app_private.sql_command_log AS l
+                JOIN app_private.app_users AS u ON u.id=l.actor_id
+                ORDER BY l.executed_at DESC LIMIT 100
+            """).fetchall()
         for row in rows:
             key = str(row["command_id"])
-            commands.setdefault(key, {"command_id": key, "statement": row["statement"], "status": "applied", "attempts": 1, "last_error": None, "result": dict(row["result"]), "created_at": row["executed_at"].isoformat(), "updated_at": row["executed_at"].isoformat()})
+            commands.setdefault(key, {"command_id": key, "statement": row["statement"], "executed_by": row["executed_by"], "actor_role": row["actor_role"], "status": "applied", "attempts": 1, "last_error": None, "result": dict(row["result"]), "created_at": row["executed_at"].isoformat(), "updated_at": row["executed_at"].isoformat()})
     except psycopg.OperationalError:
         pass
     return sorted(commands.values(), key=lambda item: item["updated_at"], reverse=True)[:100]
